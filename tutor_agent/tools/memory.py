@@ -21,6 +21,7 @@ def _set_initial_states(source: Dict[str, Any], target: State | dict[str, Any]):
     if constants.SYSTEM_TIME not in target:
         target[constants.SYSTEM_TIME] = str(datetime.now())
 
+
 def _load_precreated_itinerary(callback_context: CallbackContext):
     """
     Sets up the initial state.
@@ -29,6 +30,6 @@ def _load_precreated_itinerary(callback_context: CallbackContext):
 
     Args:
         callback_context: The callback context.
-    """    
+    """
     print("\nLoading Initial State\n")
     _set_initial_states({}, callback_context.state)
