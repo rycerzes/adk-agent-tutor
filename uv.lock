@@ -15,6 +15,7 @@ dependencies = [
     { name = "google-adk" },
     { name = "numpy" },
     { name = "plotly" },
+    { name = "schemdraw" },
     { name = "sympy" },
 ]
 
@@ -24,6 +25,7 @@ requires-dist = [
     { name = "google-adk", specifier = ">=1.0.0" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "plotly", specifier = ">=6.1.1" },
+    { name = "schemdraw", specifier = ">=0.20" },
     { name = "sympy", specifier = ">=1.14.0" },
 ]
 
@@ -1279,6 +1281,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/da/8a/22b7beea3ee0d44b1916c0c1cb0ee3af23b700b6da9f04991899d0c555d4/rsa-4.9.1.tar.gz", hash = "sha256:e7bdbfdb5497da4c07dfd35530e1a902659db6ff241e39d9953cad06ebd0ae75", size = 29034 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/8d/0133e4eb4beed9e425d9a98ed6e081a55d195481b7632472be1af08d2f6b/rsa-4.9.1-py3-none-any.whl", hash = "sha256:68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762", size = 34696 },
+]
+
+[[package]]
+name = "schemdraw"
+version = "0.20"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/09/28b7a221b2dff0b3d9c267999ae3657366dcdf7fe5f9950943df8a01a6d9/schemdraw-0.20.tar.gz", hash = "sha256:deaf028827cd1ab1a62c5d40cb70a0ed32ac1f4243ddd6ca86c616e4ac7a3672", size = 8679376 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/a5/2916a969b80940dcaec71615bedeade23dd1871c9d57f96df582bbc7ded1/schemdraw-0.20-py3-none-any.whl", hash = "sha256:ed750908232b25037759ff183e010f63c7b40b254da2f1e540ebae3fd1c0d995", size = 151891 },
 ]
 
 [[package]]
