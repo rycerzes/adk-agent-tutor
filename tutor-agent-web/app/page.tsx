@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Bot, User } from "lucide-react";
+import { MessageContent } from "@/components/MessageContent";
 
 interface Message {
   id: string;
@@ -224,7 +225,9 @@ export default function Home() {
                           : "bg-gray-800 border border-gray-700 text-gray-200"
                         }`}
                     >
-                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                      <div className="whitespace-pre-wrap break-words">
+                        <MessageContent content={message.content} />
+                      </div>
                       <p className={`text-xs mt-1 ${message.role === "user" ? "text-blue-300" : "text-gray-500"
                         }`}>
                         {new Date(message.timestamp).toLocaleTimeString()}
