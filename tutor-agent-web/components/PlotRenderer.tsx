@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
 
 // Dynamically import Plot to avoid SSR issues
@@ -9,8 +9,8 @@ const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 interface PlotData {
     success: boolean;
     plot_data?: {
-        data: any[];
-        layout: any;
+        data: Array<Record<string, unknown>>;
+        layout: Record<string, unknown>;
     };
     equations?: string[];
     x_range?: number[];
@@ -36,47 +36,59 @@ export const PlotRenderer: React.FC<PlotRendererProps> = ({ plotData }) => {
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            let typedArray: any;
             if (dtype === 'f8') {
-                typedArray = new Float64Array(bytes.buffer);
+                const typedArray = new Float64Array(bytes.buffer);
+                return Array.from(typedArray);
             } else if (dtype === 'f4') {
-                typedArray = new Float32Array(bytes.buffer);
+                const typedArray = new Float32Array(bytes.buffer);
+                return Array.from(typedArray);
             } else if (dtype === 'i4') {
-                typedArray = new Int32Array(bytes.buffer);
+                const typedArray = new Int32Array(bytes.buffer);
+                return Array.from(typedArray);
             } else if (dtype === 'i8') {
-                typedArray = new BigInt64Array(bytes.buffer);
+                // Special handling for BigInt64Array since bigint can't be directly converted to number
+                const typedArray = new BigInt64Array(bytes.buffer);
+                // Convert each bigint to number manually
+                return Array.from({ length: typedArray.length }, (_, i) => Number(typedArray[i]));
             } else {
                 throw new Error(`Unsupported dtype: ${dtype}`);
             }
-
-            return Array.from(typedArray);
         } catch (error) {
             console.error('Error decoding binary data:', error);
             return null;
         }
     };
 
-    const processPlotData = (rawPlotData: any) => {
+    const processPlotData = (rawPlotData: Record<string, unknown>) => {
         const processedData = JSON.parse(JSON.stringify(rawPlotData));
 
         if (processedData.data && Array.isArray(processedData.data)) {
-            processedData.data.forEach((trace: any) => {
-                if (trace.x && typeof trace.x === 'object' && trace.x.bdata && trace.x.dtype) {
-                    const decodedX = decodeBinaryData(trace.x.bdata, trace.x.dtype);
+            processedData.data.forEach((trace: Record<string, unknown>) => {
+                if (trace.x && typeof trace.x === 'object' && 
+                   (trace.x as Record<string, unknown>).bdata && 
+                   (trace.x as Record<string, unknown>).dtype) {
+                    const xObj = trace.x as Record<string, unknown>;
+                    const decodedX = decodeBinaryData(xObj.bdata as string, xObj.dtype as string);
                     if (decodedX) {
                         trace.x = decodedX;
                     }
                 }
 
-                if (trace.y && typeof trace.y === 'object' && trace.y.bdata && trace.y.dtype) {
-                    const decodedY = decodeBinaryData(trace.y.bdata, trace.y.dtype);
+                if (trace.y && typeof trace.y === 'object' && 
+                   (trace.y as Record<string, unknown>).bdata && 
+                   (trace.y as Record<string, unknown>).dtype) {
+                    const yObj = trace.y as Record<string, unknown>;
+                    const decodedY = decodeBinaryData(yObj.bdata as string, yObj.dtype as string);
                     if (decodedY) {
                         trace.y = decodedY;
                     }
                 }
 
-                if (trace.z && typeof trace.z === 'object' && trace.z.bdata && trace.z.dtype) {
-                    const decodedZ = decodeBinaryData(trace.z.bdata, trace.z.dtype);
+                if (trace.z && typeof trace.z === 'object' && 
+                   (trace.z as Record<string, unknown>).bdata && 
+                   (trace.z as Record<string, unknown>).dtype) {
+                    const zObj = trace.z as Record<string, unknown>;
+                    const decodedZ = decodeBinaryData(zObj.bdata as string, zObj.dtype as string);
                     if (decodedZ) {
                         trace.z = decodedZ;
                     }

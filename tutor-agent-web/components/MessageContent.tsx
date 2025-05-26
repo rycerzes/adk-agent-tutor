@@ -10,42 +10,75 @@ import { CircuitRenderer } from './CircuitRenderer';
 
 interface MessageContentProps {
   content: string;
-  rawMessage?: any;
+  rawMessage?: Record<string, unknown>;
   setHasPlot?: (hasPlot: boolean) => void;
+}
+
+interface PlotData {
+  success: boolean;
+  plot_data?: {
+    data: Array<Record<string, unknown>>;
+    layout: Record<string, unknown>;
+  };
+  equations?: string[];
+  x_range?: number[];
+  title?: string;
+  error?: string;
+  detail?: string;
+}
+
+interface CircuitData {
+  success: boolean;
+  image_data: string;
+  title?: string;
+  error?: string;
 }
 
 export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMessage, setHasPlot }) => {
   const notifiedRef = useRef(false);
 
-  const extractPlotData = (messageData: any) => {
-    const plotData: any[] = [];
+  const extractPlotData = (messageData: Record<string, unknown>): PlotData[] => {
+    const plotData: PlotData[] = [];
 
     if (!messageData) return plotData;
 
     // Only process if this is specifically identified as plot data
-    if (messageData.content && messageData.content.parts) {
-      for (const part of messageData.content.parts) {
-        // Check function calls for plotting tool
-        if (part.functionCall && part.functionCall.name === "plotting_tool") {
-          // This is a plotting tool function call, but we need the response
-          continue;
-        }
+    if (messageData.content && typeof messageData.content === 'object') {
+      const contentObj = messageData.content as Record<string, unknown>;
+      if (contentObj.parts && Array.isArray(contentObj.parts)) {
+        for (const part of contentObj.parts) {
+          if (typeof part !== 'object' || part === null) continue;
+          const partObj = part as Record<string, unknown>;
 
-        // Check function response with plotting tool
-        if (part.functionResponse &&
-          part.functionResponse.name === "plotting_tool" &&
-          part.functionResponse.response) {
-          const response = part.functionResponse.response;
-          if (response.plot_data !== undefined || response.success !== undefined) {
-            plotData.push({
-              success: response.success,
-              plot_data: response.plot_data,
-              equations: response.equations || [],
-              x_range: response.x_range || [],
-              title: response.title || 'Untitled Plot',
-              error: response.error,
-              detail: response.detail
-            });
+          // Check function calls for plotting tool
+          if (partObj.functionCall && typeof partObj.functionCall === 'object') {
+            const funcCall = partObj.functionCall as Record<string, unknown>;
+            if (funcCall.name === "plotting_tool") {
+              // This is a plotting tool function call, but we need the response
+              continue;
+            }
+          }
+
+          // Check function response with plotting tool
+          if (partObj.functionResponse && typeof partObj.functionResponse === 'object') {
+            const funcResponse = partObj.functionResponse as Record<string, unknown>;
+            if (funcResponse.name === "plotting_tool" && funcResponse.response) {
+              const response = funcResponse.response as Record<string, unknown>;
+              if (response.plot_data !== undefined || response.success !== undefined) {
+                plotData.push({
+                  success: Boolean(response.success),
+                  plot_data: response.plot_data as {
+                    data: Array<Record<string, unknown>>;
+                    layout: Record<string, unknown>;
+                  },
+                  equations: (response.equations as string[]) || [],
+                  x_range: (response.x_range as number[]) || [],
+                  title: (response.title as string) || 'Untitled Plot',
+                  error: response.error as string,
+                  detail: response.detail as string
+                });
+              }
+            }
           }
         }
       }
@@ -55,24 +88,31 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
   };
 
   // New function to extract circuit visualization data
-  const extractCircuitData = (messageData: any) => {
-    const circuitData: any[] = [];
+  const extractCircuitData = (messageData: Record<string, unknown>): CircuitData[] => {
+    const circuitData: CircuitData[] = [];
 
     if (!messageData) return circuitData;
 
-    if (messageData.content && messageData.content.parts) {
-      for (const part of messageData.content.parts) {
-        if (part.functionResponse &&
-          part.functionResponse.name === "circuit_visualization_tool" &&
-          part.functionResponse.response) {
-          const response = part.functionResponse.response;
-          if (response.success === true && response.image_data) {
-            circuitData.push({
-              success: response.success,
-              image_data: response.image_data,
-              title: response.title || 'Circuit Visualization',
-              error: response.error
-            });
+    if (messageData.content && typeof messageData.content === 'object') {
+      const contentObj = messageData.content as Record<string, unknown>;
+      if (contentObj.parts && Array.isArray(contentObj.parts)) {
+        for (const part of contentObj.parts) {
+          if (typeof part !== 'object' || part === null) continue;
+          const partObj = part as Record<string, unknown>;
+
+          if (partObj.functionResponse && typeof partObj.functionResponse === 'object') {
+            const funcResponse = partObj.functionResponse as Record<string, unknown>;
+            if (funcResponse.name === "circuit_visualization_tool" && funcResponse.response) {
+              const response = funcResponse.response as Record<string, unknown>;
+              if (response.success === true && response.image_data) {
+                circuitData.push({
+                  success: Boolean(response.success),
+                  image_data: response.image_data as string,
+                  title: (response.title as string) || 'Circuit Visualization',
+                  error: response.error as string
+                });
+              }
+            }
           }
         }
       }
@@ -173,7 +213,7 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
       setHasPlot(true);
       notifiedRef.current = true;
     }
-  }, [setHasPlot]); // Only depend on setHasPlot, check other values inside
+  }, [setHasPlot, hasVisualizations]); // Add hasVisualizations to dependency array
 
   return (
     <div>

@@ -13,22 +13,27 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
-  rawData?: any;
+  rawData?: MessageRawData;
   hasPlot?: boolean;
+}
+
+interface FunctionCallPart {
+  text?: string;
+  functionCall?: Record<string, unknown>;
+  functionResponse?: Record<string, unknown>;
 }
 
 interface ChatResponse {
   content?: {
-    parts: Array<{
-      text?: string;
-      functionCall?: any;
-      functionResponse?: any;
-    }>;
+    parts: FunctionCallPart[];
   };
   author: string;
   timestamp: number;
   id: string;
 }
+
+// Type for raw message data
+type MessageRawData = Record<string, unknown>;
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -161,7 +166,7 @@ export default function Home() {
               role: "assistant" as const,
               content: content || "I'm processing your request...",
               timestamp: resp.timestamp * 1000,
-              rawData: resp, // Store the raw response data for plot detection
+              rawData: resp as unknown as MessageRawData, // Cast to MessageRawData type
             };
           });
 
@@ -268,7 +273,7 @@ export default function Home() {
                 {messages.length === 0 && (
                   <div className="text-center text-gray-400 py-8">
                     <Bot className="w-12 h-12 mx-auto mb-4 text-gray-500" />
-                    <p>Welcome! Ask me anything about math, science, or any topic you'd like to learn about.</p>
+                    <p>Welcome! Ask me anything about math, science, or any topic you&apos;d like to learn about.</p>
                     <p className="text-sm mt-2 text-gray-500">
                       Connecting to: {apiUrl}
                     </p>
