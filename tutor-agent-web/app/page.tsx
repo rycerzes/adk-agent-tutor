@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +41,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sessionInitialized = useRef(false);
 
   const userId = "u_123";
   const appName = "tutor_agent";
@@ -49,30 +50,8 @@ export default function Home() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
   const authToken = process.env.NEXT_PUBLIC_AUTH_TOKEN;
 
-  // Initialize session on component mount
-  useEffect(() => {
-    initializeSession();
-  }, []);
-
-  useEffect(() => {
-    const scrollToBottom = () => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "end"
-        });
-      }
-    };
-
-    scrollToBottom();
-
-    const timeoutId = setTimeout(scrollToBottom, 200);
-
-    return () => clearTimeout(timeoutId);
-  }, [messages]);
-
-  // Helper function to get headers with auth if token is available
-  const getHeaders = () => {
+  // Memoize the headers to prevent recreating on each render
+  const headers = useMemo(() => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Accept": "application/json",
@@ -83,15 +62,22 @@ export default function Home() {
     }
 
     return headers;
-  };
+  }, [authToken]);
 
-  const initializeSession = async () => {
+  const initializeSession = useCallback(async () => {
+    // Skip if we already have a session or if initialization has started
+    if (sessionId || sessionInitialized.current) {
+      return;
+    }
+    
+    sessionInitialized.current = true;
+    
     try {
       const newSessionId = `s_${Date.now()}`;
       const response = await fetch(`${apiUrl}/apps/${appName}/users/${userId}/sessions/${newSessionId}`, {
         method: "POST",
         mode: "cors",
-        headers: getHeaders(),
+        headers,
       });
 
       if (response.ok) {
@@ -115,7 +101,29 @@ export default function Home() {
       setSessionId(fallbackSessionId);
       console.log("Using fallback session ID:", fallbackSessionId);
     }
-  };
+  }, [apiUrl, appName, userId, headers, sessionId]);
+
+  // Initialize session on component mount only once
+  useEffect(() => {
+    initializeSession();
+  }, [initializeSession]);
+
+  useEffect(() => {
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "end"
+        });
+      }
+    };
+
+    scrollToBottom();
+
+    const timeoutId = setTimeout(scrollToBottom, 200);
+
+    return () => clearTimeout(timeoutId);
+  }, [messages]);
 
   const sendMessage = async () => {
     if (!input.trim() || !sessionId || isLoading) return;
@@ -136,7 +144,7 @@ export default function Home() {
       const response = await fetch(`${apiUrl}/run`, {
         method: "POST",
         mode: "cors",
-        headers: getHeaders(),
+        headers,
         body: JSON.stringify({
           appName,
           userId,
