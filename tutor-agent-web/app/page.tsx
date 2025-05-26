@@ -40,6 +40,10 @@ export default function Home() {
   const userId = "u_123";
   const appName = "tutor_agent";
 
+  // Get environment variables
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const authToken = process.env.NEXT_PUBLIC_AUTH_TOKEN;
+
   // Initialize session on component mount
   useEffect(() => {
     initializeSession();
@@ -62,21 +66,40 @@ export default function Home() {
     return () => clearTimeout(timeoutId);
   }, [messages]);
 
+  // Helper function to get headers with auth if token is available
+  const getHeaders = () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    };
+
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    return headers;
+  };
+
   const initializeSession = async () => {
     try {
       const newSessionId = `s_${Date.now()}`;
-      const response = await fetch(`http://localhost:8000/apps/${appName}/users/${userId}/sessions/${newSessionId}`, {
+      const response = await fetch(`${apiUrl}/apps/${appName}/users/${userId}/sessions/${newSessionId}`, {
         method: "POST",
         mode: "cors",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
+        headers: getHeaders(),
       });
 
       if (response.ok) {
         setSessionId(newSessionId);
         console.log("Session created successfully:", newSessionId);
+      } else if (response.status === 401) {
+        console.error("Authentication failed. Please check your auth token.");
+        setMessages(prev => [...prev, {
+          id: `auth_error_${Date.now()}`,
+          role: "assistant",
+          content: "Authentication failed. Please check your configuration and try again.",
+          timestamp: Date.now(),
+        }]);
       } else {
         console.error("Failed to create session:", response.status, response.statusText);
         setSessionId(newSessionId);
@@ -105,13 +128,10 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/run", {
+      const response = await fetch(`${apiUrl}/run`, {
         method: "POST",
         mode: "cors",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
+        headers: getHeaders(),
         body: JSON.stringify({
           appName,
           userId,
@@ -155,6 +175,14 @@ export default function Home() {
             timestamp: Date.now(),
           }]);
         }
+      } else if (response.status === 401) {
+        console.error("Authentication failed during message send");
+        setMessages(prev => [...prev, {
+          id: `auth_error_${Date.now()}`,
+          role: "assistant",
+          content: "Authentication failed. Please check your auth token configuration.",
+          timestamp: Date.now(),
+        }]);
       } else {
         const errorText = await response.text();
         console.error("Failed to send message:", response.status, response.statusText, errorText);
@@ -228,6 +256,9 @@ export default function Home() {
             {sessionId && (
               <p className="text-sm text-gray-400">Session: {sessionId}</p>
             )}
+            {!authToken && (
+              <p className="text-sm text-yellow-400">⚠️ No auth token configured</p>
+            )}
           </CardHeader>
 
           <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden">
@@ -238,6 +269,9 @@ export default function Home() {
                   <div className="text-center text-gray-400 py-8">
                     <Bot className="w-12 h-12 mx-auto mb-4 text-gray-500" />
                     <p>Welcome! Ask me anything about math, science, or any topic you'd like to learn about.</p>
+                    <p className="text-sm mt-2 text-gray-500">
+                      Connecting to: {apiUrl}
+                    </p>
                   </div>
                 )}
 
