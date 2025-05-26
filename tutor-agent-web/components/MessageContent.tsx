@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -21,23 +21,19 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
 
     if (!messageData) return plotData;
 
-    if (messageData.success !== undefined && messageData.plot_data) {
-      plotData.push({
-        success: messageData.success,
-        plot_data: messageData.plot_data,
-        equations: messageData.equations || [],
-        x_range: messageData.x_range || [],
-        title: messageData.title || 'Untitled Plot',
-        error: messageData.error,
-        detail: messageData.detail
-      });
-      return plotData;
-    }
-
+    // Only process if this is specifically identified as plot data
     if (messageData.content && messageData.content.parts) {
       for (const part of messageData.content.parts) {
+        // Check function calls for plotting tool
+        if (part.functionCall && part.functionCall.name === "plotting_tool") {
+          // This is a plotting tool function call, but we need the response
+          continue;
+        }
+        
         // Check function response with plotting tool
-        if (part.functionResponse && part.functionResponse.response) {
+        if (part.functionResponse && 
+            part.functionResponse.name === "plotting_tool" && 
+            part.functionResponse.response) {
           const response = part.functionResponse.response;
           if (response.plot_data !== undefined || response.success !== undefined) {
             plotData.push({
@@ -56,6 +52,93 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
 
     return plotData;
   };
+
+  // Enhanced function to clean content by removing JSON blocks and raw plot data
+  const cleanContent = useMemo(() => {
+    if (!content || !rawMessage) return content;
+
+    let cleanedContent = content;
+    
+    // Check for code blocks containing JSON with plot data
+    const jsonCodeBlockRegex = /```(?:json)?\s*\{[\s\S]*?(?:"plot_data"|"equations"|"bdata"|"dtype"|"mode"|"scatter")[\s\S]*?\}\s*```/g;
+    cleanedContent = cleanedContent.replace(jsonCodeBlockRegex, '');
+    
+    // Check for plain JSON objects
+    const plainJsonRegex = /\{\s*[\s\S]*?(?:"plot_data"|"equations"|"bdata"|"dtype")[\s\S]*?\}/g;
+    cleanedContent = cleanedContent.replace(plainJsonRegex, '');
+    
+    // Specifically target "bdata": and base64 encoded strings (shown in the screenshot)
+    // This catches the large base64 encoded strings that may span multiple lines
+    const bdataRegex = /"bdata"\s*:\s*"[A-Za-z0-9+/=]*"/g;
+    cleanedContent = cleanedContent.replace(bdataRegex, '');
+    
+    // More aggressive pattern for catching "bdata": strings that may be broken across lines
+    const longBdataRegex = /"bdata"\s*:\s*"[^"]{20,}(?:")?/g;
+    cleanedContent = cleanedContent.replace(longBdataRegex, '');
+    
+    // Target lines starting with "bdata": and containing long encoded data
+    const lines = cleanedContent.split('\n');
+    const filteredLines = lines.filter(line => {
+      // Skip lines with "bdata": followed by long content
+      return !line.match(/^\s*"bdata"\s*:\s*"[A-Za-z0-9+/=]{20,}/) && 
+             !line.match(/^\s*"bdata":/) &&
+             !line.match(/^[A-Za-z0-9+/=]{40,}$/);
+    });
+    
+    cleanedContent = filteredLines.join('\n');
+    
+    // Check for key-value pairs that look like plot data
+    const plotDataRegex = /(?:"|')?(?:mode|name|type|x|y|bdata|dtype)(?:"|')?\s*:\s*(?:"|')?[^,\n]*(?:"|')?[,\n]/g;
+    
+    // Find sequences of these patterns
+    const newLines = [];
+    let skipCount = 0;
+    
+    for (let i = 0; i < filteredLines.length; i++) {
+      if (skipCount > 0) {
+        skipCount--;
+        continue;
+      }
+      
+      // Check if this is the start of a plot data block
+      let matchesInSequence = 0;
+      for (let j = 0; j < 10 && i + j < filteredLines.length; j++) {
+        if (plotDataRegex.test(filteredLines[i + j])) {
+          matchesInSequence++;
+          plotDataRegex.lastIndex = 0; // Reset regex
+        }
+      }
+      
+      // If we found 3+ consecutive lines with plot data patterns, skip them
+      if (matchesInSequence >= 3) {
+        skipCount = matchesInSequence;
+        continue;
+      }
+      
+      // Not part of a plot data block, keep this line
+      newLines.push(filteredLines[i]);
+    }
+    
+    cleanedContent = newLines.join('\n');
+    
+    // Clean up standalone plot-related patterns that might remain
+    cleanedContent = cleanedContent.replace(/["`']?(?:mode|type|scatter|name|bdata|dtype)["`']?\s*:\s*["`'][^"`'\n]*["`'],?/g, '');
+    
+    // Clean up multiple commas that might be left after removing content
+    cleanedContent = cleanedContent.replace(/,\s*,/g, ',');
+    
+    // Clean up multiple newlines
+    cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
+    
+    // Clean up leftover brackets from JSON objects that might have been partially removed
+    cleanedContent = cleanedContent.replace(/\{\s*\}/g, '');
+    cleanedContent = cleanedContent.replace(/\[\s*\]/g, '');
+
+    // Final check to remove any remaining large blocks of base64 data
+    cleanedContent = cleanedContent.replace(/[A-Za-z0-9+/=]{100,}/g, '');
+    
+    return cleanedContent.trim();
+  }, [content, rawMessage]);
 
   const plots = rawMessage ? extractPlotData(rawMessage) : [];
 
@@ -119,7 +202,7 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
           ),
         }}
       >
-        {content}
+        {cleanContent}
       </ReactMarkdown>
 
       {plots.map((plot, index) => (
