@@ -13,6 +13,8 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  rawData?: any;
+  hasPlot?: boolean;
 }
 
 interface ChatResponse {
@@ -20,6 +22,7 @@ interface ChatResponse {
     parts: Array<{
       text?: string;
       functionCall?: any;
+      functionResponse?: any;
     }>;
   };
   author: string;
@@ -42,9 +45,21 @@ export default function Home() {
     initializeSession();
   }, []);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "end"
+        });
+      }
+    };
+
+    scrollToBottom();
+
+    const timeoutId = setTimeout(scrollToBottom, 200);
+
+    return () => clearTimeout(timeoutId);
   }, [messages]);
 
   const initializeSession = async () => {
@@ -64,12 +79,10 @@ export default function Home() {
         console.log("Session created successfully:", newSessionId);
       } else {
         console.error("Failed to create session:", response.status, response.statusText);
-        // Fallback: use a session ID anyway for testing
         setSessionId(newSessionId);
       }
     } catch (error) {
       console.error("Error creating session:", error);
-      // Fallback: use a session ID anyway for testing
       const fallbackSessionId = `s_${Date.now()}`;
       setSessionId(fallbackSessionId);
       console.log("Using fallback session ID:", fallbackSessionId);
@@ -118,7 +131,7 @@ export default function Home() {
 
         // Process responses and extract text content
         const assistantMessages = chatResponses
-          .filter(resp => resp.content?.parts?.some(part => part.text))
+          .filter(resp => resp.content?.parts?.some(part => part.text || part.functionResponse))
           .map(resp => {
             const textParts = resp.content?.parts?.filter(part => part.text) || [];
             const content = textParts.map(part => part.text).join(" ");
@@ -127,14 +140,14 @@ export default function Home() {
               id: resp.id,
               role: "assistant" as const,
               content: content || "I'm processing your request...",
-              timestamp: resp.timestamp * 1000, // Convert to milliseconds
+              timestamp: resp.timestamp * 1000,
+              rawData: resp, // Store the raw response data for plot detection
             };
           });
 
         if (assistantMessages.length > 0) {
           setMessages(prev => [...prev, ...assistantMessages]);
         } else {
-          // Fallback if no text content found
           setMessages(prev => [...prev, {
             id: `fallback_${Date.now()}`,
             role: "assistant",
@@ -181,10 +194,32 @@ export default function Home() {
     }
   };
 
+  const updateMessageHasPlot = (messageId: string, hasPlot: boolean) => {
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, hasPlot }
+          : msg
+      )
+    );
+
+    // When a plot is loaded, scroll to see it
+    if (hasPlot) {
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "end"
+          });
+        }
+      }, 300); // timeout for plot render
+    }
+  };
+
   return (
-    <div className="h-screen bg-gradient-to-br from-gray-950 to-black p-4 flex items-center justify-center">
-      <div className="w-full max-w-4xl h-full flex flex-col">
-        <Card className="flex-1 flex flex-col shadow-lg bg-gray-900 border-gray-800 overflow-hidden">
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-950 to-black p-4 overflow-hidden">
+      <div className="w-full max-w-4xl h-full mx-auto flex flex-col">
+        <Card className="flex-1 flex flex-col shadow-lg bg-gray-900 border-gray-800 min-h-0">
           <CardHeader className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm flex-shrink-0">
             <CardTitle className="flex items-center gap-2 text-gray-100">
               <Bot className="w-6 h-6 text-blue-500" />
@@ -195,9 +230,10 @@ export default function Home() {
             )}
           </CardHeader>
 
-          <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #1f2937' }}>
-              <div className="space-y-4">
+          <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 min-h-0 h-full"
+              style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #1f2937' }}>
+              <div className="space-y-4 flex flex-col">
                 {messages.length === 0 && (
                   <div className="text-center text-gray-400 py-8">
                     <Bot className="w-12 h-12 mx-auto mb-4 text-gray-500" />
@@ -208,8 +244,7 @@ export default function Home() {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"
-                      }`}
+                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {message.role === "assistant" && (
                       <Avatar className="w-8 h-8 flex-shrink-0">
@@ -220,16 +255,24 @@ export default function Home() {
                     )}
 
                     <div
-                      className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === "user"
+                      className={`${message.hasPlot
+                        ? "max-w-[95%] w-full"
+                        : message.role === "user"
+                          ? "max-w-[80%]"
+                          : "max-w-[85%]"
+                        } rounded-lg px-4 py-2 ${message.role === "user"
                           ? "bg-blue-800 text-gray-100"
                           : "bg-gray-800 border border-gray-700 text-gray-200"
                         }`}
                     >
                       <div className="whitespace-pre-wrap break-words">
-                        <MessageContent content={message.content} />
+                        <MessageContent
+                          content={message.content}
+                          rawMessage={message.rawData}
+                          setHasPlot={(hasPlot) => updateMessageHasPlot(message.id, hasPlot)}
+                        />
                       </div>
-                      <p className={`text-xs mt-1 ${message.role === "user" ? "text-blue-300" : "text-gray-500"
-                        }`}>
+                      <p className={`text-xs mt-1 ${message.role === "user" ? "text-blue-300" : "text-gray-500"}`}>
                         {new Date(message.timestamp).toLocaleTimeString()}
                       </p>
                     </div>
@@ -261,7 +304,7 @@ export default function Home() {
                   </div>
                 )}
 
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} className="h-1 w-full flex-shrink-0" />
               </div>
             </div>
 

@@ -18,9 +18,11 @@
     "katex": "^0.16.22",
     "lucide-react": "^0.511.0",
     "next": "15.3.2",
+    "plotly.js": "^3.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
+    "react-plotly.js": "^2.6.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "tailwind-merge": "^3.3.0"
