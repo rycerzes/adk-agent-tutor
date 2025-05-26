@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { PlotRenderer } from './PlotRenderer';
+import { CircuitRenderer } from './CircuitRenderer';
 
 interface MessageContentProps {
   content: string;
@@ -29,11 +30,11 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
           // This is a plotting tool function call, but we need the response
           continue;
         }
-        
+
         // Check function response with plotting tool
-        if (part.functionResponse && 
-            part.functionResponse.name === "plotting_tool" && 
-            part.functionResponse.response) {
+        if (part.functionResponse &&
+          part.functionResponse.name === "plotting_tool" &&
+          part.functionResponse.response) {
           const response = part.functionResponse.response;
           if (response.plot_data !== undefined || response.success !== undefined) {
             plotData.push({
@@ -53,54 +54,75 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
     return plotData;
   };
 
-  // Enhanced function to clean content by removing JSON blocks and raw plot data
+  // New function to extract circuit visualization data
+  const extractCircuitData = (messageData: any) => {
+    const circuitData: any[] = [];
+
+    if (!messageData) return circuitData;
+
+    if (messageData.content && messageData.content.parts) {
+      for (const part of messageData.content.parts) {
+        if (part.functionResponse &&
+          part.functionResponse.name === "circuit_visualization_tool" &&
+          part.functionResponse.response) {
+          const response = part.functionResponse.response;
+          if (response.success === true && response.image_data) {
+            circuitData.push({
+              success: response.success,
+              image_data: response.image_data,
+              title: response.title || 'Circuit Visualization',
+              error: response.error
+            });
+          }
+        }
+      }
+    }
+
+    return circuitData;
+  };
+
   const cleanContent = useMemo(() => {
     if (!content || !rawMessage) return content;
 
     let cleanedContent = content;
-    
-    // Check for code blocks containing JSON with plot data
-    const jsonCodeBlockRegex = /```(?:json)?\s*\{[\s\S]*?(?:"plot_data"|"equations"|"bdata"|"dtype"|"mode"|"scatter")[\s\S]*?\}\s*```/g;
+
+    const jsonCodeBlockRegex = /```(?:json)?\s*\{[\s\S]*?(?:"plot_data"|"equations"|"bdata"|"dtype"|"mode"|"scatter"|"image_data")[\s\S]*?\}\s*```/g;
     cleanedContent = cleanedContent.replace(jsonCodeBlockRegex, '');
-    
-    // Check for plain JSON objects
-    const plainJsonRegex = /\{\s*[\s\S]*?(?:"plot_data"|"equations"|"bdata"|"dtype")[\s\S]*?\}/g;
+
+    const plainJsonRegex = /\{\s*[\s\S]*?(?:"plot_data"|"equations"|"bdata"|"dtype"|"image_data")[\s\S]*?\}/g;
     cleanedContent = cleanedContent.replace(plainJsonRegex, '');
-    
-    // Specifically target "bdata": and base64 encoded strings (shown in the screenshot)
-    // This catches the large base64 encoded strings that may span multiple lines
+
     const bdataRegex = /"bdata"\s*:\s*"[A-Za-z0-9+/=]*"/g;
     cleanedContent = cleanedContent.replace(bdataRegex, '');
-    
-    // More aggressive pattern for catching "bdata": strings that may be broken across lines
-    const longBdataRegex = /"bdata"\s*:\s*"[^"]{20,}(?:")?/g;
-    cleanedContent = cleanedContent.replace(longBdataRegex, '');
-    
-    // Target lines starting with "bdata": and containing long encoded data
+
+    const imageDataRegex = /"image_data"\s*:\s*"[A-Za-z0-9+/=]*"/g;
+    cleanedContent = cleanedContent.replace(imageDataRegex, '');
+
+    const longBase64Regex = /"(?:bdata|image_data)"\s*:\s*"[^"]{20,}(?:")?/g;
+    cleanedContent = cleanedContent.replace(longBase64Regex, '');
+
     const lines = cleanedContent.split('\n');
     const filteredLines = lines.filter(line => {
-      // Skip lines with "bdata": followed by long content
-      return !line.match(/^\s*"bdata"\s*:\s*"[A-Za-z0-9+/=]{20,}/) && 
-             !line.match(/^\s*"bdata":/) &&
-             !line.match(/^[A-Za-z0-9+/=]{40,}$/);
+      return !line.match(/^\s*"bdata"\s*:\s*"[A-Za-z0-9+/=]{20,}/) &&
+        !line.match(/^\s*"bdata":/) &&
+        !line.match(/^\s*"image_data"\s*:\s*"[A-Za-z0-9+/=]{20,}/) &&
+        !line.match(/^\s*"image_data":/) &&
+        !line.match(/^[A-Za-z0-9+/=]{40,}$/);
     });
-    
+
     cleanedContent = filteredLines.join('\n');
-    
-    // Check for key-value pairs that look like plot data
+
     const plotDataRegex = /(?:"|')?(?:mode|name|type|x|y|bdata|dtype)(?:"|')?\s*:\s*(?:"|')?[^,\n]*(?:"|')?[,\n]/g;
-    
-    // Find sequences of these patterns
+
     const newLines = [];
     let skipCount = 0;
-    
+
     for (let i = 0; i < filteredLines.length; i++) {
       if (skipCount > 0) {
         skipCount--;
         continue;
       }
-      
-      // Check if this is the start of a plot data block
+
       let matchesInSequence = 0;
       for (let j = 0; j < 10 && i + j < filteredLines.length; j++) {
         if (plotDataRegex.test(filteredLines[i + j])) {
@@ -108,46 +130,50 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
           plotDataRegex.lastIndex = 0; // Reset regex
         }
       }
-      
+
       // If we found 3+ consecutive lines with plot data patterns, skip them
       if (matchesInSequence >= 3) {
         skipCount = matchesInSequence;
         continue;
       }
-      
+
       // Not part of a plot data block, keep this line
       newLines.push(filteredLines[i]);
     }
-    
+
     cleanedContent = newLines.join('\n');
-    
+
     // Clean up standalone plot-related patterns that might remain
-    cleanedContent = cleanedContent.replace(/["`']?(?:mode|type|scatter|name|bdata|dtype)["`']?\s*:\s*["`'][^"`'\n]*["`'],?/g, '');
-    
+    cleanedContent = cleanedContent.replace(/["`']?(?:mode|type|scatter|name|bdata|dtype|image_data)["`']?\s*:\s*["`'][^"`'\n]*["`'],?/g, '');
+
     // Clean up multiple commas that might be left after removing content
     cleanedContent = cleanedContent.replace(/,\s*,/g, ',');
-    
+
     // Clean up multiple newlines
     cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
-    
+
     // Clean up leftover brackets from JSON objects that might have been partially removed
     cleanedContent = cleanedContent.replace(/\{\s*\}/g, '');
     cleanedContent = cleanedContent.replace(/\[\s*\]/g, '');
 
     // Final check to remove any remaining large blocks of base64 data
     cleanedContent = cleanedContent.replace(/[A-Za-z0-9+/=]{100,}/g, '');
-    
+
     return cleanedContent.trim();
   }, [content, rawMessage]);
 
   const plots = rawMessage ? extractPlotData(rawMessage) : [];
+  const circuits = rawMessage ? extractCircuitData(rawMessage) : [];
+  const hasVisualizations = plots.length > 0 || circuits.length > 0;
 
+  // Fix the useEffect dependency array to have consistent size
   useEffect(() => {
-    if (setHasPlot && plots.length > 0 && !notifiedRef.current) {
+    // Only call setHasPlot once when visualizations are detected
+    if (setHasPlot && hasVisualizations && !notifiedRef.current) {
       setHasPlot(true);
       notifiedRef.current = true;
     }
-  }, [plots, setHasPlot]);
+  }, [setHasPlot]); // Only depend on setHasPlot, check other values inside
 
   return (
     <div>
@@ -206,7 +232,11 @@ export const MessageContent: React.FC<MessageContentProps> = ({ content, rawMess
       </ReactMarkdown>
 
       {plots.map((plot, index) => (
-        <PlotRenderer key={index} plotData={plot} />
+        <PlotRenderer key={`plot-${index}`} plotData={plot} />
+      ))}
+
+      {circuits.map((circuit, index) => (
+        <CircuitRenderer key={`circuit-${index}`} imageData={circuit.image_data} title={circuit.title} />
       ))}
     </div>
   );

@@ -184,3 +184,4 @@ cython_debug/
 .env*
 !.env.example
 
+!tutor-agent-web/lib/
